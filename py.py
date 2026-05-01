@@ -1,6 +1,26 @@
 import streamlit as st
 import openai
 
+import requests
+import re
+
+def get_affiliate_id(short_url):
+    try:
+        # 模擬點擊連結，抓取跳轉後的最後一個網址
+        response = requests.get(short_url, allow_redirects=True, timeout=5)
+        final_url = response.url
+        
+        # 蝦皮通常會在網址參數中帶入分潤相關 ID (例如 sub_id 或 smtt)
+        # 這裡我們用正則表達式來抓取可能是 ID 的部分
+        # 註：具體參數名稱會隨蝦皮更新變動，建議先顯示 final_url 確認
+        match = re.search(r'smtt=([^&]+)', final_url)
+        if match:
+            return match.group(1)
+        else:
+            return "無法解析 ID，請手動確認"
+    except Exception as e:
+        return f"解析失敗: {str(e)}"
+        
 # 頁面標題與設定
 st.set_page_config(page_title="蝦皮 AI 分潤助手", layout="centered")
 st.title("🛒 蝦皮分潤內容自動化產生器")
