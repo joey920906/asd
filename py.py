@@ -1,84 +1,57 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-import re
+import yfinance as yf
+import pandas as pd
+import plotly.graph_objects as go
+from datetime import datetime
 
-# 1. 頁面標題與佈局
-st.set_page_config(page_title="Threads 穿搭分潤產生器", layout="wide")
-st.title("🧵 Threads 穿搭分潤文案 + 財務試算助手")
+# 設定標的清單 (台股代號需加 .TW)
+STOCKS = {
+    "台積電 (2330)": "2330.TW",
+    "元大台灣50 (0050)": "0050.TW",
+    "元大高股息 (0056)": "0056.TW",
+    "國泰永續高股息 (00878)": "00878.TW",
+    "群益台灣精選高息 (00919)": "00919.TW"
+}
 
-# 2. 側邊欄：分潤帳號與財務設定
-with st.sidebar:
-    st.header("🔑 帳號與財務設定")
-    aff_id = st.text_input("偵測到的分潤 ID", placeholder="自動提取中...")
-    
-    st.divider()
-    st.subheader("📊 財務參數")
-    # 預估比例設定
-    est_commission = st.select_slider(
-        "預估分潤比例 (%)",
-        options=[1, 2, 4, 7, 10, 15, 20],
-        value=7
-    )
-    est_conversion = st.number_input("預期轉單數 (件)", value=5)
+st.title("📊 專業投資評估儀表板")
 
-# 3. 商品資訊提取函式
-def get_shopee_info(url):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1"
-    }
-    try:
-        res = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        # 抓取 Meta 標籤
-        title = soup.find("meta", property="og:title")["content"] if soup.find("meta", property="og:title") else "抓取失敗，請手動輸入"
-        image = soup.find("meta", property="og:image")["content"] if soup.find("meta", property="og:image") else None
-        return title, image
-    except:
-        return None, None
+# 側邊欄：選擇標的
+selected_name = st.sidebar.selectbox("請選擇關注標的", list(STOCKS.keys()))
+stock_id = STOCKS[selected_name]
 
-# 4. 主畫面輸入區
-target_url = st.text_input("🔗 貼上你的蝦皮分潤連結", placeholder="https://s.shopee.tw/...")
+# 獲取數據
+df = yf.download(stock_id, period="1y")
 
-if st.button("🚀 一鍵分析並產出矩陣文案"):
-    if target_url:
-        with st.spinner('正在破解商品內容與計算收益...'):
-            title, img_url = get_shopee_info(target_url)
-            
-            # 佈局：左邊預覽與財務，右邊文案
-            col1, col2 = st.columns([1, 1.2])
-            
-            with col1:
-                st.subheader("🖼️ 商品內容預覽")
-                if img_url:
-                    st.image(img_url, use_column_width=True)
-                else:
-                    st.error("⚠️ 無法讀取圖片內容，請手動確認連結正確性")
-                
-                st.info(f"**偵測商品：** {title if title else '讀取中...'}")
-                
-                # 收益試算 (會計應用)
-                st.subheader("💰 預期收益分析")
-                price = 600  # 預設模擬單價
-                revenue = price * est_conversion
-                profit = revenue * (est_commission / 100)
-                
-                st.metric("預估總成交額", f"${revenue:,.0f}")
-                st.metric("預估純利潤", f"${profit:,.0f}", delta=f"利潤率 {est_commission}%")
+# --- 技術指標計算 ---
+df['MA20'] = df['Close'].rolling(window=20).mean() # 月線
+df['MA60'] = df['Close'].rolling(window=60).mean() # 季線
 
-            with col2:
-                st.subheader("📝 Threads 矩陣排版文案")
-                # AI 風格聯想邏輯
-                keywords = ["美式復古", "工裝寬鬆", "山系穿搭"]
-                
-                final_post = f"這就是我一直在找的那條「神褲」吧... 🛹\n最近真的被燒到不行，版型意外超顯腿長！\n\n"
-                final_post += f"• 主推款式：{title[:20]}...\n🛒 {target_url}\n\n"
-                final_post += "💡 相似風格建議同步搜尋：\n"
-                for kw in keywords:
-                    final_post += f"• {kw} 系列\n"
-                
-                st.code(final_post, language="text")
-                st.success("✅ 文案已就緒，建議搭配商品實拍圖發布點擊率最高！")
+# --- 進場評估邏輯 (範例：均線糾結或突破) ---
+current_price = df['Close'].iloc[-1]
+ma20_val = df['MA20'].iloc[-1]
 
+def evaluate_status(price, ma):
+    if price > ma * 1.05:
+        return "⚠️ 目前股價過高", "建議觀望，等待拉回", "inverse"
+    elif price < ma * 0.95:
+        return "✅ 股價處於相對低點", "適合分批佈局", "normal"
     else:
-        st.warning("請先輸入連結內容。")
+        return "🔵 區間震盪", "目前股價貼近均線，適合中長線持有", "normal"
+
+status, advice, color = evaluate_status(current_price, ma20_val)
+
+# --- 展示區域 ---
+st.metric(label=f"{selected_name} 當前股價", value=f"{current_price:.2f} TWD")
+st.subheader(f"進場評估：{status}")
+st.info(advice)
+
+# --- 繪製 K 線圖 ---
+fig = go.Figure(data=[go.Candlestick(
+    x=df.index,
+    open=df['Open'], high=df['High'],
+    low=df['Low'], close=df['Close'],
+    name='K線'
+)])
+fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], name='20MA', line=dict(color='orange')))
+fig.add_update_layout(xaxis_rangeslider_visible=False, title=f"{selected_name} 歷史走勢")
+st.plotly_chart(fig, use_container_width=True)
