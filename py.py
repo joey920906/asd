@@ -1,75 +1,60 @@
 import streamlit as st
-import openai
-
 import requests
+from bs4 import BeautifulSoup
 import re
 
-def get_affiliate_id(short_url):
-    try:
-        # 模擬點擊連結，抓取跳轉後的最後一個網址
-        response = requests.get(short_url, allow_redirects=True, timeout=5)
-        final_url = response.url
-        
-        # 蝦皮通常會在網址參數中帶入分潤相關 ID (例如 sub_id 或 smtt)
-        # 這裡我們用正則表達式來抓取可能是 ID 的部分
-        # 註：具體參數名稱會隨蝦皮更新變動，建議先顯示 final_url 確認
-        match = re.search(r'smtt=([^&]+)', final_url)
-        if match:
-            return match.group(1)
-        else:
-            return "無法解析 ID，請手動確認"
-    except Exception as e:
-        return f"解析失敗: {str(e)}"
-        
-# 頁面標題與設定
-st.set_page_config(page_title="蝦皮 AI 分潤助手", layout="centered")
-st.title("🛒 蝦皮分潤內容自動化產生器")
+# 頁面基本設定
+st.set_page_config(page_title="蝦皮 Threads 自動化分潤助手", layout="wide")
+st.title("🧵 Threads 穿搭分潤文案產生器")
 
-# 側邊欄設定
+# 側邊欄：分潤 ID 提取器
 with st.sidebar:
-    st.header("設定")
-    api_key = st.text_input("輸入 OpenAI API Key", type="password")
-    affiliate_id = st.text_input("輸入你的分潤帳號 ID")
+    st.header("🔑 帳號設定")
+    # 這裡實作你要求的自動提取 ID 功能
+    affiliate_url = st.text_input("輸入任一你的分潤短連結（提取 ID 用）")
+    if affiliate_url:
+        try:
+            res = requests.get(affiliate_url, allow_redirects=True, timeout=5)
+            # 從跳轉後的網址抓取 smtt 或相關參數
+            found_id = re.search(r'smtt=([^&]+)', res.url)
+            if found_id:
+                st.session_state.aff_id = found_id.group(1)
+                st.success(f"偵測到分潤 ID: {st.session_state.aff_id}")
+            else:
+                st.session_state.aff_id = st.text_input("手動輸入分潤 ID")
+        except:
+            st.error("解析失敗，請手動輸入")
 
-# 主要輸入區
-input_link = st.text_input("1. 貼上你的蝦皮分潤連結", placeholder="https://s.shopee.tw/...")
-raw_context = st.text_area("2. 補充商品資訊（若能貼上商品標題更好）", placeholder="例如：美式復古工裝褲 男生寬鬆直筒...")
+# 主介面
+target_link = st.text_input("🔗 貼上你想推廣的原始商品連結")
 
-# 模式選擇
-mode = st.radio("3. 選擇推廣模式", ["分享好物 (推薦感強)", "使用者實際推薦 (真實心得感)"])
-
-if st.button("✨ 開始生成文案與建議"):
-    if not api_key or not affiliate_id:
-        st.warning("請確保側邊欄的 API Key 和 分潤 ID 已填寫。")
-    else:
-        # 第一階段：AI 提取關鍵字與分析
-        extract_prompt = f"請根據以下資訊，提取出該商品的 3 個核心風格關鍵字，並根據這些關鍵字列出 2 種『同類型但不同設計』的相關商品描述：\n資訊：{raw_context if raw_context else input_link}"
-        
-        # 這裡假設調用 AI (模擬結果)
-        # 實際應用時請解除下方的 API 調用註釋
-        # client = openai.OpenAI(api_key=api_key)
-        # response = client.chat.completions.create(...)
-        
-        keywords = "美式復古、工裝寬鬆、垂墜感" # 模擬提取結果
-        similar_items = "1. 重磅水洗帆布褲\n2. 側邊大口袋機能褲" # 模擬相關物品
-        
-        # 第二階段：根據模式生成文案
-        if mode == "分享好物 (推薦感強)":
-            style_desc = "語氣要充滿驚喜、推薦感，多用 Emoji，強調 CP 值。"
-        else:
-            style_desc = "語氣要誠懇、像真實開箱心得，強調穿上去的具體感受（如版型、修飾度）。"
+if st.button("🚀 一鍵生成矩陣文案與圖片"):
+    if target_link:
+        with st.spinner('正在分析商品並搜尋相似單品...'):
+            # 1. 抓取原始網頁內容 (簡化版模擬)
+            # 注意：實際開發建議使用 Shopee Open API，直接爬蟲可能被擋
+            st.info("系統正在根據關鍵字產出相似單品...")
             
-        post_prompt = f"使用{style_desc}撰寫一段 Threads 文案。關鍵字：{keywords}。連結位置：{input_link}"
-        
-        # 顯示結果
-        st.divider()
-        st.subheader("💡 系統提取關鍵字")
-        st.write(f"`{keywords}`")
-        
-        st.subheader("🔍 建議可尋找的類似物品")
-        st.info(similar_items)
-        
-        st.subheader("📝 生成文案 (Threads 專用)")
-        final_post = f"【AI 生成文案】\n這款真的必入！{keywords}風格完全是我的菜...\n(文案內容依據模式調整中...)\n\n🛒 傳送門：{input_link}"
-        st.code(final_post, language="text")
-        st.button("📋 點擊複製文案 (模擬)")
+            # 模擬 AI 產出的相似商品數據
+            items = [
+                {"name": "美式復古工裝", "link": target_link, "img": "https://via.placeholder.com/300", "desc": "刷色有質感，City Boy 必備。"},
+                {"name": "寬鬆抽繩降落傘褲", "link": "https://s.shopee.tw/8ASaELasNe", "img": "https://via.placeholder.com/300", "desc": "褲腳抽繩設計，機能感拉滿。"},
+                {"name": "水洗直筒寬褲", "link": "https://s.shopee.tw/2VoDTwwJsp", "img": "https://via.placeholder.com/300", "desc": "垂墜感極佳，視覺比例拉長。"}
+            ]
+            
+            # 2. 顯示文案排版
+            st.subheader("📝 Threads 文案預覽")
+            post_content = f"這就是我一直在找的那條「神褲」吧... 🛹\n最近真的被燒到不行，版型意外超顯腿長！\n\n"
+            for i, item in enumerate(items, 1):
+                post_content += f"• {item['name']}\n{item['desc']}\n🛒 {item['link']}\n"
+            
+            st.code(post_content, language="text")
+            
+            # 3. 顯示圖片排版 (模擬 Threads 橫排顯示)
+            st.subheader("🖼️ 推薦圖片 (可右鍵儲存)")
+            cols = st.columns(3)
+            for idx, col in enumerate(cols):
+                col.image(items[idx]['img'], caption=items[idx]['name'], use_column_width=True)
+                
+    else:
+        st.warning("請先輸入連結")
