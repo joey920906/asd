@@ -5,108 +5,110 @@ import plotly.graph_objects as go
 import json
 import os
 
-# --- 1. 檔案讀寫邏輯 (包含成本數據) ---
-SAVE_FILE = "my_stocks_v2.json"
-# 預設清單格式：{"名稱": ["代號", 買入成本]}，0 代表未持有
+# --- 1. 檔案讀寫邏輯 (格式：{代號: [成本, 股數, 名稱]}) ---
+SAVE_FILE = "my_assets_v3.json"
 DEFAULT_STOCKS = {
-    "台積電": ["2330.TW", 0],
-    "元大台灣50": ["0050.TW", 0],
-    "微星科技": ["2377.TW", 114.0], # 這裡預設填入你的成本
-    "群益台灣精選高息": ["00919.TW", 0]
+    "2377.TW": [114.0, 1000, "微星"],
+    "00919.TW": [25.0, 5000, "群益台灣精選高息"]
 }
 
 def load_stocks():
     if os.path.exists(SAVE_FILE):
         with open(SAVE_FILE, "r", encoding="utf-8") as f:
-            try:
-                return json.load(f)
-            except:
-                return DEFAULT_STOCKS
+            return json.load(f)
     return DEFAULT_STOCKS
 
 def save_stocks(stocks):
     with open(SAVE_FILE, "w", encoding="utf-8") as f:
         json.dump(stocks, f, ensure_ascii=False, indent=4)
 
-if 'stock_list' not in st.session_state:
-    st.session_state.stock_list = load_stocks()
+if 'assets' not in st.session_state:
+    st.session_state.assets = load_stocks()
 
 # --- 2. 介面設定 ---
-st.set_page_config(page_title="投資與損益監控儀表板", layout="wide")
-st.title("🚀 個人投資與損益監控")
+st.set_page_config(page_title="懶人投資助手", layout="wide")
+st.title("💰 我的自動化資產儀表板")
 
-# --- 3. 側邊欄：進階管理器 ---
-st.sidebar.header("🛠️ 資產管理器")
+# --- 3. 側邊欄：簡化版管理 (只輸代號) ---
+st.sidebar.header("📂 庫存管理")
 
 with st.sidebar.expander("➕ 新增/更新持股"):
-    new_name = st.text_input("股票名稱").strip()
-    new_id = st.text_input("代號 (如: 2317.TW)").strip()
-    new_cost = st.number_input("買入成本 (若未持有請填 0)", min_value=0.0, step=0.1)
-    if st.button("儲存標的"):
-        if new_name and new_id:
-            st.session_state.stock_list[new_name] = [new_id, new_cost]
-            save_stocks(st.session_state.stock_list)
-            st.success(f"已更新 {new_name}")
-            st.rerun()
+    symbol = st.text_input("輸入股票代號 (如: 2330.TW)").strip().upper()
+    cost = st.number_input("買入單價", min_value=0.0, step=0.1)
+    shares = st.number_input("持有股數 (1張=1000股)", min_value=0, step=100)
+    
+    if st.button("確認加入"):
+        if symbol:
+            with st.spinner('正在查詢名稱...'):
+                ticker = yf.Ticker(symbol)
+                # 抓取簡稱，抓不到就用代號代替
+                name = ticker.info.get('shortName', symbol)
+                st.session_state.assets[symbol] = [cost, shares, name]
+                save_stocks(st.session_state.assets)
+                st.success(f"已加入 {name}")
+                st.rerun()
 
 with st.sidebar.expander("🗑️ 刪除標的"):
-    del_name = st.selectbox("選擇要刪除的標的", list(st.session_state.stock_list.keys()))
+    del_id = st.selectbox("選擇要刪除的標的", list(st.session_state.assets.keys()))
     if st.button("確認刪除"):
-        del st.session_state.stock_list[del_name]
-        save_stocks(st.session_state.stock_list)
+        del st.session_state.assets[del_id]
+        save_stocks(st.session_state.assets)
         st.rerun()
 
 st.sidebar.divider()
-selected_name = st.sidebar.selectbox("📈 選擇查看標的", list(st.session_state.stock_list.keys()))
-stock_id, my_cost = st.session_state.stock_list[selected_name]
+selected_id = st.sidebar.selectbox("📈 選擇查看標的", list(st.session_state.assets.keys()))
+my_cost, my_shares, my_name = st.session_state.assets[selected_id]
 
 # --- 4. 數據處理與顯示 ---
-@st.cache_data(ttl=3600)
-def load_data(symbol):
-    data = yf.download(symbol, period="1y", interval="1d", auto_adjust=True)
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(0)
-    return data
+@st.cache_data(ttl=600)
+def fetch_data(sid):
+    d = yf.download(sid, period="1y", auto_adjust=True)
+    if isinstance(d.columns, pd.MultiIndex):
+        d.columns = d.columns.get_level_values(0)
+    return d
 
-df = load_data(stock_id)
+df = fetch_data(selected_id)
 
 if not df.empty:
-    current_price = float(df['Close'].iloc[-1])
-    df['MA20'] = df['Close'].rolling(window=20).mean()
-    ma20_val = float(df['MA20'].iloc[-1])
-
-    # --- 核心邏輯：損益與賣出判斷 ---
-    st.subheader(f"目前查看：{selected_name} ({stock_id})")
+    curr_p = float(df['Close'].iloc[-1])
+    ma20 = float(df['Close'].rolling(20).mean().iloc[-1])
     
-    m1, m2, m3 = st.columns(3)
-    m1.metric("當前市價", f"{current_price:.2f}")
+    st.subheader(f"{my_name} ({selected_id})")
+
+    # 計算損益
+    total_cost = my_cost * my_shares
+    total_value = curr_p * my_shares
+    profit_amt = total_value - total_cost
+    profit_pct = (profit_amt / total_cost * 100) if total_cost > 0 else 0
+
+    # 頂部指標
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("目前股價", f"{curr_p:.2f}")
+    c2.metric("持倉成本", f"{my_cost:.2f}")
+    c3.metric("總損益 (NTD)", f"{profit_amt:,.0f}", delta=f"{profit_pct:.2f}%")
+    c4.metric("目前價值", f"{total_value:,.0f}")
+
+    # --- 升級版白話建議 ---
+    st.divider()
+    st.markdown("### 💡 AI 投資大白話建議")
     
     if my_cost > 0:
-        profit_pct = (current_price - my_cost) / my_cost * 100
-        m2.metric("我的成本", f"{my_cost:.2f}")
-        m3.metric("目前損益", f"{profit_pct:.2f}%", delta=f"{profit_pct:.2f}%")
-        
-        # 賣出/持有評估
-        st.write("---")
-        st.markdown("### 🏹 持倉策略建議")
-        
-        if profit_pct > 20:
-            st.warning(f"💰 獲利已達 {profit_pct:.1f}%！建議可先「分批入袋」落袋為安。")
-        elif profit_pct < -10:
-            st.error(f"🚨 虧損達 {profit_pct:.1f}%。請檢視基本面，若破線建議執行停損。")
-        elif current_price > ma20_val:
-            st.success("💪 股價仍高於月線且處於獲利狀態，建議「持續持有」享受波段。")
+        if profit_pct < -10:
+            st.error(f"⚠️ 跌得有點痛了 (虧損 {profit_pct:.1f}%)！如果當初買入的理由不見了，建議考慮停損，別跟錢過不去。")
+        elif profit_pct > 20:
+            st.success(f"🎉 賺很大喔 (獲利 {profit_pct:.1f}%)！可以考慮先賣掉一點點放口袋，剩下的繼續讓它跑。")
+        elif curr_p > ma20:
+            st.info("💪 目前走勢還算強，股價穩穩站在月線上面，建議繼續抱著不用急。")
         else:
-            st.info("🕒 目前股價震盪中，若未破關鍵支撐建議先行持有觀察。")
+            st.warning("🧐 最近股價有點軟，雖然還沒大虧，但建議多觀察，先不要加碼。")
     else:
-        m2.metric("我的成本", "未輸入")
-        st.info("💡 你可以在左側選單輸入買入成本，程式將自動計算損益與賣出建議。")
+        st.info("你目前只是觀察這檔股票，還沒有輸入買入成本喔！")
 
-    # K線圖
+    # K線圖加上成本線
     fig = go.Figure(data=[go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='K線')])
     if my_cost > 0:
-        fig.add_hline(y=my_cost, line_dash="dash", line_color="red", annotation_text="我的成本線")
+        fig.add_hline(y=my_cost, line_dash="dash", line_color="red", annotation_text="你的買入價")
     st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.error("數據獲取失敗。")
+    st.error("代號輸入錯誤，請確認。")
