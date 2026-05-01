@@ -57,8 +57,8 @@ def scan_trending_stocks(stock_pool):
     return recommendations
 
 # --- 3. 介面設定 ---
-st.set_page_config(page_title="懶人投資助手", layout="wide")
-st.title("💰 我的自動化資產儀表板")
+st.set_page_config(page_title="小憶投資助手", layout="wide")
+st.title("💰 我的資產儀表板")
 
 # 使用 Tabs 區分功能
 tab_stock, tab_radar = st.tabs(["📊 我的庫存管理", "🚀 AI 趨勢選股"])
