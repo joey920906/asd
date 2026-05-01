@@ -29,6 +29,18 @@ if 'assets' not in st.session_state:
 st.set_page_config(page_title="懶人投資助手", layout="wide")
 st.title("💰 我的自動化資產儀表板")
 
+# --- 在 app.py 的 title 下方加入這行 ---
+tab1, tab2 = st.tabs(["📊 我的庫存", "🚀 AI 選股推薦"])
+
+with tab1:
+    # 這裡放原本 app.py 的庫存代碼
+    # (即你截圖中看到的內容)
+
+with tab2:
+    # 這裡放原本在選股頁面的代碼
+    st.header("選股")
+    # ...
+
 # --- 3. 側邊欄：簡化版管理 (只輸代號) ---
 st.sidebar.header("📂 庫存管理")
 
