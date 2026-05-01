@@ -36,11 +36,6 @@ with tab1:
     # 這裡放原本 app.py 的庫存代碼
     # (即你截圖中看到的內容)
 
-with tab2:
-    # 這裡放原本在選股頁面的代碼
-    st.header("選股")
-    # ...
-
 # --- 3. 側邊欄：簡化版管理 (只輸代號) ---
 st.sidebar.header("📂 庫存管理")
 
@@ -124,3 +119,8 @@ if not df.empty:
 
 else:
     st.error("代號輸入錯誤，請確認。")
+with tab2:
+    # 這裡放原本在選股頁面的代碼
+    st.header("選股")
+    # ...
+
